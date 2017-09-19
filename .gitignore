@@ -1,0 +1,9 @@
+compiled
+
+*.db
+
+*.json
+
+*.swp
+
+*.rkt~
