@@ -8,79 +8,72 @@
  initialize-db
 
  ; Hash DB-Statement DB-Connection -> Hash
- insert-post
+ insert-page-result
 
  ; List-of-Hash DB-Connection
- insert-post*
+ insert-page-results
 
  ; DB-Connection -> List-of-Vector
  get-key-url*)
 
+; Config references
+(define PATH (get-conf-at 'location))
+(define TABLE (get-conf-at 'table))
+(define FIELDS (get-conf-at 'fields))
+(define CONSTRAINT (get-conf-at 'constraint?))
 
-; DB-Connection -> DB-Statement
-(define (post-statement d-b)
+
+(define (create-page-results-statement d-b)
+  ; how to abstract?
+  (define fields->string
+    (foldl (lambda (f base)
+             (string-append base ", " (symbol->string (first f))))
+           (symbol->string (first (first FIELDS)))
+           (rest FIELDS)))
+  
   (prepare d-b
-           (string-append
-            "INSERT INTO job_posts "
-            "(title, company, location, "
-            "date, url, key, can_apply) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)")))
-
+           (string-append "INSERT INTO " TABLE " ("
+                          fields->string ") "
+                          "VALUES (" (foldr (lambda (f b)
+                                              (string-append b ", ?"))
+                                            "?" (rest FIELDS)) ")")))
+  
 
 ; Config -> DB-Connection
-(define (initialize-db db-cfg)
-  (define path (get-conf-at 'location))
-  (define d-b (sqlite3-connect #:database path #:mode 'create))
-
-  (define table-name (get-conf-at 'table))
-  (define fields (get-conf-at 'fields))
-  (define constraint (get-conf-at 'constraint?))
+(define (initialize-db)
+  (define d-b (sqlite3-connect #:database PATH #:mode 'create))
   
-  (unless (table-exists? d-b table-name)
-    (query-exec d-b (field*->create-query table-name fields constraint)))
+  (unless (table-exists? d-b TABLE)
+    (query-exec d-b (field*->create-query TABLE FIELDS CONSTRAINT)))
   d-b)
 
 
-; Hash DB -> Hash
-(define (insert-post.v1 post d-b)
-  (define key (hash-ref post 'key))
-  (define url (hash-ref post 'url))
-  (query-exec d-b
-              (string-append "INSERT INTO job_posts "
-                             "(title, company, location, "
-                             "date, url, key, can_apply) "
-                             "VALUES(?, ?, ?, ?, ?, ?, ?)")
-              (hash-ref post 'title)
-              (hash-ref post 'company)
-              (hash-ref post 'location)
-              (hash-ref post 'date)
-              url
-              key
-              (boolean->string (hash-ref post 'can_apply)))
-  (hash (string->symbol key) url))
+; Hash DB-Connection DB-Statement -> Hash
+(define (insert-page-result result d-b stmt)
+  (define prepped (map (lambda (r)
+                         (hash-ref result r))
+                       (sort (hash-keys result) symbol<?)))
 
-(define (insert-post post stmt d-b)
-  (define key (hash-ref post 'key))
-  (define url (hash-ref post 'url))
-  
-  (query-exec d-b
-              stmt
-              (hash-ref post 'title)
-              (hash-ref post 'company)
-              (hash-ref post 'location)
-              (hash-ref post 'date)
-              url
-              key
-              (boolean->string (hash-ref post 'can_apply)))
-  (hash (string->symbol key) url))
+  (apply query-exec
+         (cons d-b
+               (cons stmt prepped)))
+  ; Hash to be used for ScraperState
+  ; should return a struct from given result data
+  (hash 'a 'test))
+
   
 ; List-of-Hash DB-Connection -> List-of-Hash
-(define (insert-post* loh d-b)
+(define (insert-page-results loh d-b)
+  ; Hash -> Hash
+  (define (insert result)
+    (insert-page-result result
+                        d-b
+                        (create-page-results-statement d-b)))
+  
   (call-with-transaction
    d-b
    (lambda ()
-     (map (lambda (post)
-            (insert-post post (post-statement d-b) d-b)) loh))
+     (map insert loh))
    #:isolation 'serializable))
 
 
@@ -88,11 +81,6 @@
 (define (get-key-url* d-b)
   (query-rows d-b
               "SELECT key, url FROM job_posts"))
-
-
-; Boolean -> String
-(define (boolean->string bool)
-  (if bool "true" "false"))
 
 
 ; Config -> String
@@ -129,13 +117,13 @@
   (define TEST-CREATE-NO-CONSTRAINT
     (string-append "CREATE TABLE job_posts "
                    "(id INTEGER PRIMARY KEY, "
-                   "title TEXT, "
+                   "can_apply TEXT, "
                    "company TEXT, "
-                   "location TEXT, "
                    "date TEXT, "
-                   "url TEXT, "
                    "key TEXT, "
-                   "can_apply TEXT)"))
+                   "location TEXT, "
+                   "title TEXT, "
+                   "url TEXT)"))
   (define TEST-CREATE-CONSTRAINT
     (string-append "CREATE TABLE job_posts "
                    "(id INTEGER PRIMARY KEY, "

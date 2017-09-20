@@ -5,8 +5,7 @@
          "config-utility.rkt"
          2htdp/universe
          2htdp/image
-         net/url
-         json)
+         net/url)
 
 
 ;(provide
@@ -98,16 +97,31 @@
 ; uses attr* from 'response-targets in Config to create
 ; a hash the from API response
 (define (get-results-data cfg js)
-  (define target* (get-conf-at 'results-data))
+  (define targets (get-conf-at 'results-data))
+
+  ; Symbol -> List
+  (define (key-attr->assoc sy)
+    (assoc sy targets))
   
-  (for/hash ([k target*]) ; for clause not specialized?
-    (define keys-attr (assoc (first k) target*))
+  ; Atom -> String
+  (define (enforce-string val)
+    (cond
+      [(boolean? val)
+       (boolean->string val)]
+      [(symbol? val)
+       (symbol->string val)]
+      [else val]))
+
+  ; specialize for clause with "in-list"
+  (for/hash ([k (in-list targets)]) ; for clause not specialized?
+    (define keys-attr (key-attr->assoc (first k)))
     (values (first keys-attr)
-            (hash-ref js (second keys-attr)))))
+            (enforce-string
+             (hash-ref js (second keys-attr))))))
 
 
 ; Config DB-Connection -> Hash
-(define (get-first-page cfg d-b)
+(define (get-first-page/save-results cfg d-b)
   (define meta-data (get-conf-at 'meta-data))
   (define total-results-target (second (assoc 'total-results meta-data)))
   (define results-target (second (assoc 'page-results meta-data)))
@@ -123,19 +137,23 @@
                               total-results-target))
 
   ; List-of-Scraped
-  (define result* (map (lambda (result)
+  (define results (map (lambda (result)
                          (get-results-data cfg result))
                        (hash-ref response-json results-target)))
-  ; need to write to db
+
+  ; writes to DB
+  (define scraped-state (insert-page-results results d-b))
 
   ; return Hash
   (hash 'db d-b
         'length pages-len
-        'scraped* result*
+        'scraped scraped-state
         'url base-url))
 
 
-
+; Boolean -> String
+(define (boolean->string bool)
+  (if bool "true" "false"))
 
 
 ;; Hash -> List-of-Hash

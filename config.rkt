@@ -18,13 +18,13 @@
 (define DB-CONFIG
   '(sqlite3 (location "/home/bammer/projects/racket/worlds-scraper/test.db")
             (table "job_posts")
-            (fields ((title "TEXT")
+            (fields ((can_apply "TEXT")
                      (company "TEXT")
-                     (location "TEXT")
                      (date "TEXT")
-                     (url "TEXT")
                      (key "TEXT")
-                     (can_apply "TEXT"))
+                     (location "TEXT")
+                     (title "TEXT")
+                     (url "TEXT"))
                     (constraint? #f))))
             
                      
@@ -86,13 +86,14 @@
   '(response-targets (meta-data ((total-results totalResults)
                                  (page-results results)
                                  (results-length "25")))
-                     (results-data ((title jobtitle)
+                     (results-data ((can_apply indeedApply)
                                     (company company)
-                                    (location formattedLocation)
                                     (date date)
-                                    (url url)
                                     (key jobkey)
-                                    (can_apply indeedApply)))))
+                                    (location formattedLocation)
+                                    (title jobtitle)
+                                    (url url)))))
+
 
 (define JSON-CONFIG
   `(json ,JSON-URL-CONFIG
